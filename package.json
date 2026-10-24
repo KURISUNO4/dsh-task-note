@@ -1,6 +1,6 @@
 {
   "name": "dsh-task-note",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "右上角可拖动的任务便签：分 AI 与用户两栏，用户任务支持逐行新增/编辑、拖动排序、感叹号标记重要、圆圈完成即消失；并在会话区取代 DSH 原生任务列表。",
   "repository": {

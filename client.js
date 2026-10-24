@@ -362,7 +362,10 @@ window.__ModuleLoader__.load({
       '.dsn-ball,.dsn-root{pointer-events:auto;box-sizing:border-box;font-size:13px;line-height:20px;color:var(--dsw-alias-label-primary);-webkit-font-smoothing:antialiased;z-index:2147483000;margin:0;left:auto;bottom:auto;inset-inline-start:auto;inset-block-end:auto}',
       '.dsn-root:not(:popover-open),.dsn-ball:not(:popover-open){display:none}',
       // Collapsed floating ball.
-      '.dsn-ball{position:fixed;display:grid;place-items:center;width:44px;height:44px;padding:0;border-radius:50%;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-specific-menu,var(--dsw-alias-bg-overlay));box-shadow:var(--dsw-elevation-panel,0 8px 24px rgba(0,0,0,.18));cursor:grab;touch-action:none;user-select:none;color:var(--dsw-alias-label-primary)}',
+      // `overflow:visible` is load-bearing, not cosmetic: the UA stylesheet gives every
+      // `[popover]` `overflow:auto`, which clips the badge that sits at top:-5px/right:-5px
+      // outside the 44px circle (a clipped wedge plus a scrollbar track inside the ball).
+      '.dsn-ball{position:fixed;display:grid;place-items:center;width:44px;height:44px;padding:0;border-radius:50%;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-specific-menu,var(--dsw-alias-bg-overlay));box-shadow:var(--dsw-elevation-panel,0 8px 24px rgba(0,0,0,.18));cursor:grab;touch-action:none;user-select:none;color:var(--dsw-alias-label-primary);overflow:visible}',
       '.dsn-ball:hover{color:var(--dsw-alias-brand-primary)}',
       '.dsn-ball:focus-visible,.dsn-root button:focus-visible,.dsn-root input:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}',
       '.dsn-ball.dsn-dragging{cursor:grabbing}',
