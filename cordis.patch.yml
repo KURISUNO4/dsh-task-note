@@ -1,0 +1,6 @@
+# dsh-task-note —— DSH bundle patch
+#
+# 插件行本身；bundle 名由 plugin_manager 的 install_bundle 写进 profile。
+- insert:
+    - id: task-note
+      name: dsh-task-note

@@ -1,0 +1,33 @@
+{
+  "name": "dsh-task-note",
+  "version": "0.1.0",
+  "private": true,
+  "description": "右上角可拖动的任务便签：分 AI 与用户两栏，用户任务支持逐行新增/编辑、拖动排序、感叹号标记重要、圆圈完成即消失；并在会话区取代 DSH 原生任务列表。",
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    }
+  }
+}

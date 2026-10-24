@@ -1,0 +1,4 @@
+node_modules/
+_shots/
+*.log
+_publish-result.json
