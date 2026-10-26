@@ -32,6 +32,7 @@ window.__ModuleLoader__.load({
     const STORAGE_KEY = 'dsh-task-note/v1'
     /** Defensive bounds: a broken or hostile stored value must not wedge the widget. */
     const MAX_TASKS = 500
+    const MAX_SUBTASKS = 100
     const MAX_TEXT = 500
     /** Default anchor: top-right, below the conversation header's own controls. */
     const DEFAULT_RIGHT = 20
@@ -61,6 +62,13 @@ window.__ModuleLoader__.load({
       'a11y.unimportant': '取消重要标记：{text}',
       'a11y.edit': '编辑：{text}',
       'a11y.drag': '拖动排序：{text}',
+      'a11y.expandSub': '展开子任务：{text}',
+      'a11y.collapseSub': '收起子任务：{text}',
+      'a11y.completeSub': '完成子任务：{text}',
+      'a11y.dragSub': '拖动排序子任务：{text}',
+      'sub.empty': '还没有子任务',
+      'sub.add.placeholder': '添加子任务，回车确认',
+      'sub.add.action': '添加子任务',
       'a11y.moveUp': '上移：{text}',
       'a11y.moveDown': '下移：{text}',
       'ball.label': '任务便签，{count} 项未完成',
@@ -90,6 +98,13 @@ window.__ModuleLoader__.load({
       'a11y.unimportant': 'Clear important: {text}',
       'a11y.edit': 'Edit: {text}',
       'a11y.drag': 'Drag to reorder: {text}',
+      'a11y.expandSub': 'Expand subtasks: {text}',
+      'a11y.collapseSub': 'Collapse subtasks: {text}',
+      'a11y.completeSub': 'Complete subtask: {text}',
+      'a11y.dragSub': 'Drag to reorder subtask: {text}',
+      'sub.empty': 'No subtasks yet',
+      'sub.add.placeholder': 'Add a subtask, press Enter',
+      'sub.add.action': 'Add subtask',
       'a11y.moveUp': 'Move up: {text}',
       'a11y.moveDown': 'Move down: {text}',
       'ball.label': 'Task note, {count} open',
@@ -126,6 +141,14 @@ window.__ModuleLoader__.load({
      * @returns {{ id: string, text: string, important: boolean, createdAt: number }} a new task.
      */
     function makeTask(text) {
+      return { id: makeTaskId(), text, important: false, createdAt: Date.now(), expanded: false, subtasks: [] }
+    }
+
+    /**
+     * @param {string} text subtask content.
+     * @returns {{ id: string, text: string, important: boolean, createdAt: number }} a new subtask.
+     */
+    function makeSubtask(text) {
       return { id: makeTaskId(), text, important: false, createdAt: Date.now() }
     }
 
@@ -134,8 +157,25 @@ window.__ModuleLoader__.load({
      * ------------------------------------------------------------------ */
 
     /**
+     * @param {unknown} entry one stored subtask entry.
+     * @returns {{ id: string, text: string, important: boolean, createdAt: number } | null} a safe subtask.
+     */
+    function sanitizeSubtask(entry) {
+      if (entry === null || typeof entry !== 'object') return null
+      if (typeof entry.text !== 'string') return null
+      const text = entry.text.trim().slice(0, MAX_TEXT)
+      if (text.length === 0) return null
+      return {
+        id: typeof entry.id === 'string' && entry.id.length > 0 ? entry.id.slice(0, 64) : makeTaskId(),
+        text,
+        important: entry.important === true,
+        createdAt: Number.isFinite(entry.createdAt) ? entry.createdAt : Date.now(),
+      }
+    }
+
+    /**
      * @param {unknown} raw parsed or partially trusted stored value.
-     * @returns {{ version: number, tasks: Array<{id: string, text: string, important: boolean, createdAt: number}>, collapsed: boolean, pos: ({ right: number, top: number } | null) }} a safe state.
+     * @returns {{ version: number, tasks: Array<{id: string, text: string, important: boolean, createdAt: number, expanded: boolean, subtasks: Array<{id: string, text: string, important: boolean, createdAt: number}>}>, collapsed: boolean, pos: ({ right: number, top: number } | null) }} a safe state.
      */
     function sanitizeState(raw) {
       const tasks = []
@@ -145,11 +185,22 @@ window.__ModuleLoader__.load({
         if (typeof entry.text !== 'string') continue
         const text = entry.text.trim().slice(0, MAX_TEXT)
         if (text.length === 0) continue
+        const subtasks = []
+        if (Array.isArray(entry.subtasks)) {
+          for (const candidate of entry.subtasks) {
+            const subtask = sanitizeSubtask(candidate)
+            if (subtask === null) continue
+            subtasks.push(subtask)
+            if (subtasks.length >= MAX_SUBTASKS) break
+          }
+        }
         tasks.push({
           id: typeof entry.id === 'string' && entry.id.length > 0 ? entry.id.slice(0, 64) : makeTaskId(),
           text,
           important: entry.important === true,
           createdAt: Number.isFinite(entry.createdAt) ? entry.createdAt : Date.now(),
+          expanded: entry.expanded === true,
+          subtasks,
         })
         if (tasks.length >= MAX_TASKS) break
       }
@@ -304,6 +355,13 @@ window.__ModuleLoader__.load({
       }, h('path', { d: 'M4 10l4-4 4 4' }))
     }
 
+    function GlyphChevronRight() {
+      return h('svg', {
+        viewBox: '0 0 16 16', width: 12, height: 12, fill: 'none', stroke: 'currentColor',
+        strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true, focusable: false,
+      }, h('path', { d: 'M6 3.5l4.5 4.5-4.5 4.5' }))
+    }
+
     function GlyphPlus() {
       return h('svg', {
         viewBox: '0 0 16 16', width: 14, height: 14, fill: 'none', stroke: 'currentColor',
@@ -422,6 +480,22 @@ window.__ModuleLoader__.load({
       '.dsn-add .dsn-input{flex:1}',
       '.dsn-addBtn{flex:none;display:grid;place-items:center;width:26px;height:26px;padding:0;border:1px solid var(--dsw-alias-border-l1);border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer}',
       '.dsn-addBtn:hover{color:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary)}',
+      // Subtasks: disclosure chevron + indented child list.
+      '.dsn-item{display:flex;flex-direction:column;min-width:0}',
+      '.dsn-expand{flex:none;display:grid;place-items:center;width:16px;height:20px;padding:0;border:0;border-radius:4px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer;opacity:.7}',
+      '.dsn-expand:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.09));opacity:1}',
+      '.dsn-expand svg{transition:transform .15s ease}',
+      '.dsn-expand[aria-expanded="true"] svg{transform:rotate(90deg)}',
+      '.dsn-subWrap{display:flex;flex-direction:column;gap:1px;margin:1px 0 3px 9px;padding:1px 0 1px 8px;border-left:1px solid var(--dsw-alias-border-l1);min-width:0}',
+      '.dsn-subList{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1px;min-width:0}',
+      '.dsn-subItem{display:flex;min-width:0}',
+      '.dsn-subRow{min-height:25px}',
+      '.dsn-circleSub{width:16px;height:16px}',
+      '.dsn-subText{font-size:12px;line-height:18px}',
+      '.dsn-subEmpty{color:var(--dsw-alias-label-tertiary);font-size:11.5px;line-height:18px;padding:1px 4px}',
+      '.dsn-subAdd{margin-top:2px;padding-top:4px;border-top:1px solid var(--dsw-alias-border-l1)}',
+      '.dsn-inputSub{flex:1;min-width:0;height:24px;font-size:12px}',
+      '.dsn-addBtnSub{width:24px;height:24px}',
       '.dsn-srOnly{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}',
       '@media (prefers-reduced-motion:reduce){.dsn-pulse{animation:none;opacity:.9}.dsn-circle svg{transition:none}}',
     ].join('')
@@ -496,8 +570,9 @@ window.__ModuleLoader__.load({
       const [dragging, setDragging] = React.useState(false)
       const widgetDrag = React.useRef(null)
       const [draft, setDraft] = React.useState('')
+      const [subDrafts, setSubDrafts] = React.useState({})
       const [editing, setEditing] = React.useState(null)
-      const [dragIndex, setDragIndex] = React.useState(-1)
+      const [dragState, setDragState] = React.useState(null)
       const rowDrag = React.useRef(null)
 
       /**
@@ -636,6 +711,55 @@ window.__ModuleLoader__.load({
         }))
       }
 
+      const toggleExpanded = (id) => {
+        noteStore.update((current) => ({
+          ...current,
+          tasks: current.tasks.map((task) => (
+            task.id === id ? { ...task, expanded: task.expanded !== true } : task
+          )),
+        }))
+      }
+
+      const addSubtask = (parentId, text) => {
+        const value = String(text).trim().slice(0, MAX_TEXT)
+        if (value.length === 0) return
+        noteStore.update((current) => ({
+          ...current,
+          tasks: current.tasks.map((task) => {
+            if (task.id !== parentId) return task
+            if (task.subtasks.length >= MAX_SUBTASKS) return task
+            return { ...task, expanded: true, subtasks: task.subtasks.concat(makeSubtask(value)) }
+          }),
+        }))
+      }
+
+      const completeSubtask = (parentId, subtaskId) => {
+        noteStore.update((current) => ({
+          ...current,
+          tasks: current.tasks.map((task) => (
+            task.id === parentId
+              ? { ...task, subtasks: task.subtasks.filter((subtask) => subtask.id !== subtaskId) }
+              : task
+          )),
+        }))
+      }
+
+      const toggleSubtaskImportant = (parentId, subtaskId) => {
+        noteStore.update((current) => ({
+          ...current,
+          tasks: current.tasks.map((task) => (
+            task.id === parentId
+              ? {
+                ...task,
+                subtasks: task.subtasks.map((subtask) => (
+                  subtask.id === subtaskId ? { ...subtask, important: !subtask.important } : subtask
+                )),
+              }
+              : task
+          )),
+        }))
+      }
+
       /**
        * Move one task and keep the array identity stable when nothing changes.
        * @param {number} from source index.
@@ -654,6 +778,52 @@ window.__ModuleLoader__.load({
         }, options)
       }
 
+      /**
+       * Move one subtask inside its parent's list.
+       * @param {string} parentId parent task id.
+       * @param {number} from source index.
+       * @param {number} to target index.
+       * @param {{ persist?: boolean } | undefined} options drag-frame persistence.
+       * @returns {void}
+       */
+      const moveSubtask = (parentId, from, to, options) => {
+        noteStore.update((current) => {
+          const parent = current.tasks.find((task) => task.id === parentId)
+          if (parent === undefined) return current
+          if (from === to || from < 0 || to < 0) return current
+          if (from >= parent.subtasks.length || to >= parent.subtasks.length) return current
+          const subtasks = parent.subtasks.slice()
+          const moved = subtasks.splice(from, 1)[0]
+          subtasks.splice(to, 0, moved)
+          return {
+            ...current,
+            tasks: current.tasks.map((task) => (task.id === parentId ? { ...task, subtasks } : task)),
+          }
+        }, options)
+      }
+
+      /**
+       * @param {string} listId 'root' for top-level tasks, else a parent task id.
+       * @param {number} from source index.
+       * @param {number} to target index.
+       * @param {{ persist?: boolean } | undefined} options drag-frame persistence.
+       * @returns {void}
+       */
+      const moveInList = (listId, from, to, options) => {
+        if (listId === 'root') moveTask(from, to, options)
+        else moveSubtask(listId, from, to, options)
+      }
+
+      /**
+       * @param {string} listId 'root' or a parent task id.
+       * @returns {number} the number of rows in that list.
+       */
+      const listLength = (listId) => {
+        if (listId === 'root') return tasks.length
+        const parent = tasks.find((task) => task.id === listId)
+        return parent === undefined ? 0 : parent.subtasks.length
+      }
+
       const commitEdit = () => {
         const current = editing
         if (current === null) return
@@ -662,39 +832,51 @@ window.__ModuleLoader__.load({
         if (text.length === 0) return
         noteStore.update((value) => ({
           ...value,
-          tasks: value.tasks.map((task) => (task.id === current.id ? { ...task, text } : task)),
+          tasks: value.tasks.map((task) => {
+            if (current.listId === 'root') return task.id === current.id ? { ...task, text } : task
+            if (task.id !== current.listId) return task
+            return {
+              ...task,
+              subtasks: task.subtasks.map((subtask) => (
+                subtask.id === current.id ? { ...subtask, text } : subtask
+              )),
+            }
+          }),
         }))
       }
 
       /**
-       * Pointer-based reordering: the row under the pointer becomes the insertion
-       * target while the list reorders live. Persistence waits for pointer up.
+       * Pointer-based reordering scoped to one list (root tasks or one parent's subtasks).
+       * The row under the pointer becomes the insertion target while the list reorders
+       * live; persistence waits for pointer up.
+       * @param {string} listId 'root' or a parent task id.
        * @param {number} index index of the row being dragged.
        * @param {import('react').PointerEvent} event pointer down on that row's grip.
        * @returns {void}
        */
-      const startRowDrag = (index, event) => {
+      const startRowDrag = (listId, index, event) => {
         if (event.pointerType === 'mouse' && event.button !== 0) return
         event.preventDefault()
         event.stopPropagation()
-        rowDrag.current = { from: index }
-        setDragIndex(index)
+        rowDrag.current = { listId, from: index }
+        setDragState({ listId, index })
         const onMove = (moveEvent) => {
           const info = rowDrag.current
           if (info === null) return
           const node = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY)
           const row = node !== null && node.closest !== undefined ? node.closest('[data-dsn-row]') : null
           if (row === null) return
+          if (row.getAttribute('data-list') !== info.listId) return
           const to = Number(row.getAttribute('data-index'))
           if (!Number.isFinite(to) || to === info.from) return
-          moveTask(info.from, to, { persist: false })
+          moveInList(info.listId, info.from, to, { persist: false })
           info.from = to
-          setDragIndex(to)
+          setDragState({ listId: info.listId, index: to })
         }
         const finish = () => {
           if (rowDrag.current === null) return
           rowDrag.current = null
-          setDragIndex(-1)
+          setDragState(null)
           noteStore.persist()
           window.removeEventListener('pointermove', onMove)
           window.removeEventListener('pointerup', finish)
@@ -766,81 +948,148 @@ window.__ModuleLoader__.load({
           : h('div', { className: 'dsn-empty' }, t('ai.empty')),
       )
 
+      /**
+       * Render one task row. Root rows own the subtask disclosure and the indented
+       * sublist; sub rows reuse the same controls without another disclosure level.
+       * @param {object} task task or subtask.
+       * @param {number} index index within its own list.
+       * @param {string} listId 'root' or the parent task id.
+       * @param {boolean} isSub whether this is a subtask row.
+       * @returns {import('react').ReactNode} the list item.
+       */
+      const renderRow = (task, index, listId, isSub) => {
+        const expanded = isSub ? false : task.expanded === true
+        const activeDrag = dragState !== null && dragState.listId === listId && dragState.index === index
+        const row = h('div', {
+          className: 'dsn-row'
+            + (isSub ? ' dsn-subRow' : '')
+            + (task.important ? ' dsn-important' : '')
+            + (activeDrag ? ' dsn-rowDragging' : ''),
+          'data-dsn-row': true,
+          'data-list': listId,
+          'data-index': index,
+          title: task.text,
+        },
+          h('button', {
+            type: 'button',
+            className: 'dsn-circle' + (isSub ? ' dsn-circleSub' : ''),
+            title: isSub ? t('a11y.completeSub', { text: task.text }) : t('a11y.complete', { text: task.text }),
+            'aria-label': isSub ? t('a11y.completeSub', { text: task.text }) : t('a11y.complete', { text: task.text }),
+            onClick: () => (isSub ? completeSubtask(listId, task.id) : completeTask(task.id)),
+          }, h(GlyphCheck)),
+          isSub ? null : h('button', {
+            type: 'button',
+            className: 'dsn-expand',
+            'aria-expanded': expanded,
+            title: expanded ? t('a11y.collapseSub', { text: task.text }) : t('a11y.expandSub', { text: task.text }),
+            'aria-label': expanded ? t('a11y.collapseSub', { text: task.text }) : t('a11y.expandSub', { text: task.text }),
+            onClick: () => toggleExpanded(task.id),
+          }, h(GlyphChevronRight)),
+          editing !== null && editing.listId === listId && editing.id === task.id
+            ? h('input', {
+              className: 'dsn-input dsn-rowInput' + (isSub ? ' dsn-inputSub' : ''),
+              value: editing.value,
+              autoFocus: true,
+              'aria-label': t('a11y.edit', { text: task.text }),
+              onChange: (event) => setEditing({ listId, id: task.id, value: event.target.value }),
+              onKeyDown: (event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  commitEdit()
+                } else if (event.key === 'Escape') {
+                  event.preventDefault()
+                  setEditing(null)
+                }
+              },
+              onBlur: commitEdit,
+            })
+            : h('button', {
+              type: 'button',
+              className: 'dsn-text' + (isSub ? ' dsn-subText' : ''),
+              title: task.text,
+              'aria-label': t('a11y.edit', { text: task.text }),
+              onClick: () => setEditing({ listId, id: task.id, value: task.text }),
+            }, task.text),
+          h('button', {
+            type: 'button',
+            className: 'dsn-flag',
+            'aria-pressed': task.important,
+            title: task.important ? t('a11y.unimportant', { text: task.text }) : t('a11y.important', { text: task.text }),
+            'aria-label': task.important ? t('a11y.unimportant', { text: task.text }) : t('a11y.important', { text: task.text }),
+            onClick: () => (isSub ? toggleSubtaskImportant(listId, task.id) : toggleImportant(task.id)),
+          }, '!'),
+          h('span', {
+            className: 'dsn-grip',
+            role: 'button',
+            tabIndex: 0,
+            title: isSub ? t('a11y.dragSub', { text: task.text }) : t('a11y.drag', { text: task.text }),
+            'aria-label': isSub ? t('a11y.dragSub', { text: task.text }) : t('a11y.drag', { text: task.text }),
+            onPointerDown: (event) => startRowDrag(listId, index, event),
+            onKeyDown: (event) => {
+              if (event.key === 'ArrowUp' && event.altKey && index > 0) {
+                event.preventDefault()
+                moveInList(listId, index, index - 1)
+              } else if (event.key === 'ArrowDown' && event.altKey && index < listLength(listId) - 1) {
+                event.preventDefault()
+                moveInList(listId, index, index + 1)
+              }
+            },
+          }, h(GlyphGrip)),
+        )
+
+        if (isSub) return h('li', { key: task.id, className: 'dsn-subItem' }, row)
+
+        return h('li', { key: task.id, className: 'dsn-item' },
+          row,
+          expanded
+            ? h('div', { className: 'dsn-subWrap' },
+              task.subtasks.length > 0
+                ? h('ul', { className: 'dsn-subList' },
+                  task.subtasks.map((subtask, subIndex) => renderRow(subtask, subIndex, task.id, true)))
+                : h('div', { className: 'dsn-subEmpty' }, t('sub.empty')),
+              h('form', {
+                className: 'dsn-add dsn-subAdd',
+                onSubmit: (event) => {
+                  event.preventDefault()
+                  addSubtask(task.id, subDrafts[task.id] || '')
+                  setSubDrafts((previous) => ({ ...previous, [task.id]: '' }))
+                },
+              },
+                h('input', {
+                  className: 'dsn-input dsn-inputSub',
+                  value: subDrafts[task.id] || '',
+                  placeholder: t('sub.add.placeholder'),
+                  'aria-label': t('sub.add.placeholder'),
+                  onChange: (event) => {
+                    const value = event.target.value
+                    setSubDrafts((previous) => ({ ...previous, [task.id]: value }))
+                  },
+                  onKeyDown: (event) => {
+                    if (event.key === 'Escape') {
+                      event.preventDefault()
+                      setSubDrafts((previous) => ({ ...previous, [task.id]: '' }))
+                    }
+                  },
+                }),
+                h('button', {
+                  type: 'submit',
+                  className: 'dsn-addBtn dsn-addBtnSub',
+                  title: t('sub.add.action'),
+                  'aria-label': t('sub.add.action'),
+                }, h(GlyphPlus)),
+              ),
+            )
+            : null,
+        )
+      }
+
       const userSection = h('section', { className: 'dsn-section', 'aria-label': t('user.title') },
         h('div', { className: 'dsn-sectionHead' },
           h('span', { className: 'dsn-sectionTitle' }, t('user.title')),
           h('span', { className: 'dsn-count' }, tasks.length > 0 ? t('user.count', { count: tasks.length }) : ''),
         ),
         tasks.length > 0
-          ? h('ul', { className: 'dsn-list' },
-            tasks.map((task, index) => h('li', {
-              key: task.id,
-              className: 'dsn-row'
-                + (task.important ? ' dsn-important' : '')
-                + (dragIndex === index ? ' dsn-rowDragging' : ''),
-              'data-dsn-row': true,
-              'data-index': index,
-              title: task.text,
-            },
-              h('button', {
-                type: 'button',
-                className: 'dsn-circle',
-                title: t('a11y.complete', { text: task.text }),
-                'aria-label': t('a11y.complete', { text: task.text }),
-                onClick: () => completeTask(task.id),
-              }, h(GlyphCheck)),
-              editing !== null && editing.id === task.id
-                ? h('input', {
-                  className: 'dsn-input dsn-rowInput',
-                  value: editing.value,
-                  autoFocus: true,
-                  'aria-label': t('a11y.edit', { text: task.text }),
-                  onChange: (event) => setEditing({ id: task.id, value: event.target.value }),
-                  onKeyDown: (event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault()
-                      commitEdit()
-                    } else if (event.key === 'Escape') {
-                      event.preventDefault()
-                      setEditing(null)
-                    }
-                  },
-                  onBlur: commitEdit,
-                })
-                : h('button', {
-                  type: 'button',
-                  className: 'dsn-text',
-                  title: task.text,
-                  'aria-label': t('a11y.edit', { text: task.text }),
-                  onClick: () => setEditing({ id: task.id, value: task.text }),
-                }, task.text),
-              h('button', {
-                type: 'button',
-                className: 'dsn-flag',
-                'aria-pressed': task.important,
-                title: task.important ? t('a11y.unimportant', { text: task.text }) : t('a11y.important', { text: task.text }),
-                'aria-label': task.important ? t('a11y.unimportant', { text: task.text }) : t('a11y.important', { text: task.text }),
-                onClick: () => toggleImportant(task.id),
-              }, '!'),
-              h('span', {
-                className: 'dsn-grip',
-                role: 'button',
-                tabIndex: 0,
-                title: t('a11y.drag', { text: task.text }),
-                'aria-label': t('a11y.drag', { text: task.text }),
-                onPointerDown: (event) => startRowDrag(index, event),
-                onKeyDown: (event) => {
-                  if (event.key === 'ArrowUp' && event.altKey && index > 0) {
-                    event.preventDefault()
-                    moveTask(index, index - 1)
-                  } else if (event.key === 'ArrowDown' && event.altKey && index < tasks.length - 1) {
-                    event.preventDefault()
-                    moveTask(index, index + 1)
-                  }
-                },
-              }, h(GlyphGrip)),
-            )),
-          )
+          ? h('ul', { className: 'dsn-list' }, tasks.map((task, index) => renderRow(task, index, 'root', false)))
           : h('div', { className: 'dsn-empty' }, t('user.empty')),
         h('form', {
           className: 'dsn-add',
